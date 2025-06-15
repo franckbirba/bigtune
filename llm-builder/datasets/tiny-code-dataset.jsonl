@@ -1,0 +1,2 @@
+{"text": "### Instruction: Write a Python function to add two numbers\n### Response:\ndef add(a, b):\n    return a + b"}
+{"text": "### Instruction: Create a function that returns the square of a number\n### Response:\ndef square(x):\n    return x * x"}

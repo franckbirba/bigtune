@@ -1,0 +1,17 @@
+base_model: mistralai/Mistral-7B-Instruct-v0.2
+load_in_4bit: true
+datasets:
+  - path: datasets/tiny-code-dataset.jsonl
+    type: completion
+dataset_prepared_path: output/prepared
+val_set_size: 1
+adapter: lora
+lora_r: 8
+lora_alpha: 16
+lora_dropout: 0.1
+output_dir: output/lora-mistral
+num_epochs: 1
+micro_batch_size: 1
+gradient_accumulation_steps: 4
+save_steps: 5
+logging_steps: 1

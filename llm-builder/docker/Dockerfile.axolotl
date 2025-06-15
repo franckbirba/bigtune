@@ -1,0 +1,20 @@
+FROM nvidia/cuda:12.1.1-cudnn8-runtime-ubuntu22.04
+
+ENV DEBIAN_FRONTEND=noninteractive
+
+# Dépendances système
+RUN apt-get update && apt-get install -y git python3-pip
+
+# PyTorch (CUDA 12.1)
+RUN pip3 install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu121
+
+# Installer bitsandbytes d'abord
+RUN pip3 install bitsandbytes
+
+# Installer Axolotl via Git sans dépendances
+RUN pip3 install git+https://github.com/OpenAccess-AI-Collective/axolotl.git@main --no-deps
+
+# Installer le reste manuellement
+RUN pip3 install accelerate transformers datasets
+
+WORKDIR /workspace

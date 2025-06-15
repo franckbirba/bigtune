@@ -1,0 +1,28 @@
+
+
+base_model: mistralai/Mistral-7B-Instruct-v0.2
+load_in_4bit: true
+datasets:
+  - path: datasets/positivity-rewriter.jsonl
+    type: completion
+dataset_prepared_path: output/prepared
+val_set_size: 2
+adapter: lora
+lora_r: 8
+lora_alpha: 16
+lora_dropout: 0.05
+lora_target_modules:
+  - q_proj
+  - v_proj
+  - k_proj
+  - o_proj
+  - gate_proj
+  - up_proj
+  - down_proj
+output_dir: output/lora-positivity-rewriter
+num_epochs: 2
+micro_batch_size: 2
+gradient_accumulation_steps: 4
+learning_rate: 2e-4
+save_steps: 5
+logging_steps: 1
