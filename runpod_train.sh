@@ -83,19 +83,42 @@ else
     exit 1
 fi
 
+# Determine config file to use
+CONFIG_FILE=${CONFIG_FILE:-"config/positivity-lora.yaml"}
+FULL_CONFIG_PATH="/workspace/$CONFIG_FILE"
+
+# Check if config file exists
+if [ ! -f "$FULL_CONFIG_PATH" ]; then
+    echo "❌ Configuration file not found: $FULL_CONFIG_PATH"
+    echo "Available config files:"
+    find /workspace/config -name "*.yaml" 2>/dev/null || echo "No YAML files found in /workspace/config"
+    exit 1
+fi
+
+# Parse output directory from config file
+OUTPUT_DIR=$(python3 -c "
+import yaml
+try:
+    with open('$FULL_CONFIG_PATH', 'r') as f:
+        config = yaml.safe_load(f)
+    print(config.get('output_dir', 'output/lora-adapter'))
+except Exception as e:
+    print('output/lora-adapter')
+")
+
 # Clean previous training output
 echo "🧹 Cleaning previous training output..."
-rm -rf /workspace/output/lora-positivity-rewriter
+rm -rf "/workspace/$OUTPUT_DIR"
 
 # Start training
 echo "🎯 Starting LoRA training..."
-echo "Configuration: /workspace/config/positivity-lora.yaml"
-echo "Dataset: /workspace/datasets/positivity-rewriter.jsonl"
+echo "Configuration: $FULL_CONFIG_PATH"
+echo "Output directory: /workspace/$OUTPUT_DIR"
 echo ""
 
 # Run training with proper module path
-python3 -m axolotl.cli.train /workspace/config/positivity-lora.yaml
+python3 -m axolotl.cli.train "$FULL_CONFIG_PATH"
 
 echo ""
 echo "✅ Training completed!"
-echo "📁 Output saved to: /workspace/output/lora-positivity-rewriter"
+echo "📁 Output saved to: /workspace/$OUTPUT_DIR"

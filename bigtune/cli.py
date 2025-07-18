@@ -9,6 +9,7 @@ import sys
 import subprocess
 import json
 import time
+import yaml
 from pathlib import Path
 from datetime import datetime
 try:
@@ -25,6 +26,37 @@ class BigTune:
             'merge': self.base_dir / 'minimal_merge.py', 
             'convert': self.base_dir / 'convert_to_gguf_simple.py'
         }
+    
+    def load_training_config(self):
+        """Load the training configuration YAML file"""
+        config_paths = [
+            self.base_dir / "llm-builder" / config.CONFIG_FILE,
+            self.base_dir / config.CONFIG_FILE,
+            self.base_dir / "llm-builder/config/positivity-lora.yaml"  # fallback
+        ]
+        
+        for config_path in config_paths:
+            if config_path.exists():
+                with open(config_path, 'r') as f:
+                    return yaml.safe_load(f)
+        
+        return None
+    
+    def get_training_paths(self):
+        """Get training paths from config"""
+        training_config = self.load_training_config()
+        if not training_config:
+            return None, None
+        
+        output_dir = training_config.get('output_dir', './output/lora-adapter')
+        dataset_path = None
+        
+        # Extract dataset path from config
+        datasets = training_config.get('datasets', [])
+        if datasets and isinstance(datasets[0], dict):
+            dataset_path = datasets[0].get('path')
+        
+        return output_dir, dataset_path
 
     def log(self, message, level="INFO"):
         """Log with timestamp"""
@@ -60,15 +92,33 @@ class BigTune:
 
     def check_prerequisites(self):
         """Check if required directories and files exist"""
-        checks = [
-            (self.base_dir / "llm-builder" / "config" / "positivity-lora.yaml", "Training config"),
-            (self.base_dir / "llm-builder" / "datasets" / "positivity-rewriter.jsonl", "Training dataset"),
+        training_config = self.load_training_config()
+        if not training_config:
+            self.log("❌ Could not load training configuration", "ERROR")
+            return False
+        
+        output_dir, dataset_path = self.get_training_paths()
+        
+        checks = []
+        
+        # Check config file
+        config_paths = [
+            self.base_dir / "llm-builder" / config.CONFIG_FILE,
+            self.base_dir / config.CONFIG_FILE
         ]
+        config_found = any(p.exists() for p in config_paths)
+        if not config_found:
+            checks.append((config_paths[0], "Training config"))
+        
+        # Check dataset file if specified
+        if dataset_path:
+            dataset_full_path = self.base_dir / "llm-builder" / dataset_path
+            if not dataset_full_path.exists():
+                checks.append((dataset_full_path, "Training dataset"))
         
         missing = []
         for path, name in checks:
-            if not path.exists():
-                missing.append(f"{name}: {path}")
+            missing.append(f"{name}: {path}")
         
         if missing:
             self.log("Missing prerequisites:", "ERROR")
@@ -96,9 +146,14 @@ class BigTune:
         self.log("🔄 Merging LoRA adapters with base model")
         
         # Check if training output exists
-        output_path = self.base_dir / "output" / "lora-positivity-rewriter"
+        output_dir, _ = self.get_training_paths()
+        if not output_dir:
+            self.log("❌ Could not determine output directory from config", "ERROR")
+            return False
+            
+        output_path = self.base_dir / output_dir
         if not output_path.exists():
-            self.log("❌ No LoRA training output found. Run 'bigtune train' first.", "ERROR")
+            self.log(f"❌ No LoRA training output found at {output_path}. Run 'bigtune train' first.", "ERROR")
             return False
             
         return self.run_script('merge', "LoRA merging")
@@ -141,10 +196,16 @@ class BigTune:
         self.log("📊 BigTune Pipeline Status")
         self.log("=" * 40)
         
+        # Get paths from config
+        output_dir, _ = self.get_training_paths()
+        
         # Check training output
-        training_output = self.base_dir / "output" / "lora-positivity-rewriter"
-        training_status = "✅ Complete" if training_output.exists() else "❌ Not found"
-        self.log(f"Training:     {training_status}")
+        if output_dir:
+            training_output = self.base_dir / output_dir
+            training_status = "✅ Complete" if training_output.exists() else "❌ Not found"
+            self.log(f"Training:     {training_status} ({output_dir})")
+        else:
+            self.log(f"Training:     ❌ Config not found")
         
         # Check merged model
         merged_model = self.base_dir / "merged_model"
@@ -161,9 +222,9 @@ class BigTune:
         self.log(f"GGUF:         {gguf_status}")
         
         # Check LM Studio installation
-        lms_dir = Path("/Users/franckbirba/.lmstudio/models/custom")
+        lms_dir = Path(config.LM_STUDIO_PATH) if hasattr(config, 'LM_STUDIO_PATH') else Path("/Users/franckbirba/.lmstudio/models/custom")
         if lms_dir.exists():
-            lms_models = [d for d in lms_dir.iterdir() if d.is_dir() and "mistral-7b-positivity" in d.name]
+            lms_models = [d for d in lms_dir.iterdir() if d.is_dir()]
             lms_status = f"✅ {len(lms_models)} models" if lms_models else "❌ No models"
         else:
             lms_status = "❌ LM Studio not found"
