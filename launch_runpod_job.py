@@ -298,7 +298,17 @@ def main():
             
             if datasets_dir.exists():
                 print(f"📂 Found external datasets directory: {datasets_dir}")
-                datasets_upload_cmd = f"scp -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -r -i {ssh_key_path} -P {ssh_port} {datasets_dir}/ {ssh_user}@{pod_ip}:/workspace/datasets/"
+                
+                # First create the datasets directory on the pod
+                mkdir_cmd = f'ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -i {ssh_key_path} -p {ssh_port} {ssh_user}@{pod_ip} "mkdir -p /workspace/datasets"'
+                print(f"🔧 Creating datasets directory: {mkdir_cmd}")
+                result = os.system(mkdir_cmd)
+                if result != 0:
+                    print(f"⚠️ Failed to create datasets directory with exit code: {result}")
+                    return None
+                
+                # Then upload the datasets
+                datasets_upload_cmd = f"scp -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -r -i {ssh_key_path} -P {ssh_port} {datasets_dir}/* {ssh_user}@{pod_ip}:/workspace/datasets/"
                 print(f"🔧 Datasets upload command: {datasets_upload_cmd}")
                 result = os.system(datasets_upload_cmd)
                 if result != 0:
