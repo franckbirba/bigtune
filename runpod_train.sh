@@ -85,7 +85,15 @@ fi
 
 # Determine config file to use
 CONFIG_FILE=${CONFIG_FILE:-"config/positivity-lora.yaml"}
-FULL_CONFIG_PATH="/workspace/$CONFIG_FILE"
+
+# If CONFIG_FILE is an absolute path, extract just the filename and look in /workspace/config/
+if [[ "$CONFIG_FILE" = /* ]]; then
+    # Extract just the filename from absolute path
+    CONFIG_FILENAME=$(basename "$CONFIG_FILE")
+    FULL_CONFIG_PATH="/workspace/config/$CONFIG_FILENAME"
+else
+    FULL_CONFIG_PATH="/workspace/$CONFIG_FILE"
+fi
 
 # Check if config file exists
 if [ ! -f "$FULL_CONFIG_PATH" ]; then
