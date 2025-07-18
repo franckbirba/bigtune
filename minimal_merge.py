@@ -31,12 +31,20 @@ except ImportError:
 
 def load_training_config():
     """Load the training configuration YAML file"""
-    # Look for config file in current directory first, then bigtune directory
-    config_paths = [
-        Path(config.CONFIG_FILE),  # Current working directory
-        Path("llm-builder") / config.CONFIG_FILE,  # BigTune structure
-        Path("config") / config.CONFIG_FILE.split('/')[-1] if '/' in config.CONFIG_FILE else Path("config") / config.CONFIG_FILE  # Just config/ dir
-    ]
+    config_file = config.CONFIG_FILE
+    
+    config_paths = []
+    
+    # If CONFIG_FILE is an absolute path, use it directly
+    if Path(config_file).is_absolute():
+        config_paths.append(Path(config_file))
+    else:
+        # Relative paths - check multiple locations
+        config_paths.extend([
+            Path(config_file),  # Current working directory
+            Path("llm-builder") / config_file,  # BigTune structure
+            Path("config") / config_file.split('/')[-1] if '/' in config_file else Path("config") / config_file  # Just config/ dir
+        ])
     
     for config_path in config_paths:
         if config_path.exists():
