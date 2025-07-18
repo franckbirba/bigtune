@@ -279,34 +279,34 @@ def main():
                     print(f"⚠️ Upload failed with exit code: {result}")
                     return None
             else:
-                # Fallback: upload BigTune's config but external datasets
-                print(f"📂 Using BigTune's llm-builder with external datasets")
-                llm_builder_path = SCRIPT_DIR / "llm-builder"
-                if llm_builder_path.exists():
-                    upload_cmd = f"scp -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -r -i {ssh_key_path} -P {ssh_port} {llm_builder_path}/ {ssh_user}@{pod_ip}:/workspace/"
-                    print(f"🔧 Upload command: {upload_cmd}")
-                    result = os.system(upload_cmd)
-                    if result != 0:
-                        print(f"⚠️ Upload failed with exit code: {result}")
-                        return None
-                else:
-                    print("❌ Error: Could not find llm-builder directory")
+                # Upload external config and datasets separately
+                print(f"📂 Using external config and datasets")
+                
+                # First create necessary directories
+                mkdir_cmd = f'ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -i {ssh_key_path} -p {ssh_port} {ssh_user}@{pod_ip} "rm -rf /workspace/config /workspace/datasets && mkdir -p /workspace/config /workspace/datasets"'
+                print(f"🔧 Creating clean directories: {mkdir_cmd}")
+                result = os.system(mkdir_cmd)
+                if result != 0:
+                    print(f"⚠️ Failed to create directories with exit code: {result}")
                     return None
                 
-                # Upload external datasets separately
+                # Upload the specific config file
+                config_file_path = Path(config.CONFIG_FILE)
+                config_upload_cmd = f"scp -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -i {ssh_key_path} -P {ssh_port} {config_file_path} {ssh_user}@{pod_ip}:/workspace/config/"
+                print(f"🔧 Config upload command: {config_upload_cmd}")
+                result = os.system(config_upload_cmd)
+                if result != 0:
+                    print(f"⚠️ Config upload failed with exit code: {result}")
+                    return None
+                else:
+                    print("✅ External config uploaded successfully")
+                
+                # Upload external datasets
                 datasets_dir = config_dir / "datasets"
                 if datasets_dir.exists():
                     print(f"📂 Found external datasets directory: {datasets_dir}")
                     
-                    # First create the datasets directory on the pod (clear existing)
-                    mkdir_cmd = f'ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -i {ssh_key_path} -p {ssh_port} {ssh_user}@{pod_ip} "rm -rf /workspace/datasets && mkdir -p /workspace/datasets"'
-                    print(f"🔧 Creating clean datasets directory: {mkdir_cmd}")
-                    result = os.system(mkdir_cmd)
-                    if result != 0:
-                        print(f"⚠️ Failed to create datasets directory with exit code: {result}")
-                        return None
-                    
-                    # Then upload the external datasets
+                    # Upload the external datasets
                     datasets_upload_cmd = f"scp -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -r -i {ssh_key_path} -P {ssh_port} {datasets_dir}/* {ssh_user}@{pod_ip}:/workspace/datasets/"
                     print(f"🔧 Datasets upload command: {datasets_upload_cmd}")
                     result = os.system(datasets_upload_cmd)
