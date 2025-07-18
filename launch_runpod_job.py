@@ -251,6 +251,13 @@ def main():
 
         ssh_user = "root"
         ssh_key_path = SSH_KEY_PATH
+        
+        # Verify SSH key exists
+        if not os.path.exists(ssh_key_path):
+            print(f"❌ SSH key not found: {ssh_key_path}")
+            return None
+        
+        print(f"🔑 Using SSH key: {ssh_key_path}")
 
         # === STEP 4: Upload your project to pod
         print("📤 Uploading local folder to pod...")
@@ -272,7 +279,12 @@ def main():
             return None
             
         print(f"📂 Using llm-builder from: {llm_builder_path}")
-        os.system(f"scp -r -i {ssh_key_path} -P {ssh_port} {llm_builder_path}/ {ssh_user}@{pod_ip}:/workspace/")
+        upload_cmd = f"scp -r -i {ssh_key_path} -P {ssh_port} {llm_builder_path}/ {ssh_user}@{pod_ip}:/workspace/"
+        print(f"🔧 Upload command: {upload_cmd}")
+        result = os.system(upload_cmd)
+        if result != 0:
+            print(f"⚠️ Upload failed with exit code: {result}")
+            return None
 
         # === STEP 5: Trigger training remotely
         print("🚀 Launching training on pod...")
@@ -280,7 +292,12 @@ def main():
         # Upload the unified training script
         print("📤 Uploading training script...")
         runpod_script_path = SCRIPT_DIR / "runpod_train.sh"
-        os.system(f"scp -i {ssh_key_path} -P {ssh_port} {runpod_script_path} {ssh_user}@{pod_ip}:/workspace/runpod_train.sh")
+        script_upload_cmd = f"scp -i {ssh_key_path} -P {ssh_port} {runpod_script_path} {ssh_user}@{pod_ip}:/workspace/runpod_train.sh"
+        print(f"🔧 Script upload command: {script_upload_cmd}")
+        result = os.system(script_upload_cmd)
+        if result != 0:
+            print(f"⚠️ Script upload failed with exit code: {result}")
+            return None
         
         # Set environment variables and execute the script
         env_vars = []
@@ -297,8 +314,13 @@ def main():
         
         # Download the trained model
         print("📥 Downloading trained model...")
-        os.system(f"scp -r -i {ssh_key_path} -P {ssh_port} {ssh_user}@{pod_ip}:/workspace/output ./")
-        print("✅ Model downloaded to ./output/")
+        download_cmd = f"scp -r -i {ssh_key_path} -P {ssh_port} {ssh_user}@{pod_ip}:/workspace/output ./"
+        print(f"🔧 Download command: {download_cmd}")
+        result = os.system(download_cmd)
+        if result != 0:
+            print(f"⚠️ Download failed with exit code: {result}")
+        else:
+            print("✅ Model downloaded to ./output/")
     except Exception as e:
         print("❌ Une erreur est survenue :", str(e))
     finally:
