@@ -308,9 +308,37 @@ def main():
         
         env_str = " ".join(env_vars) + " " if env_vars else ""
         ssh_cmd = f'ssh -i {ssh_key_path} -p {ssh_port} {ssh_user}@{pod_ip} "{env_str}chmod +x /workspace/runpod_train.sh && {env_str}/workspace/runpod_train.sh"'
-        with os.popen(ssh_cmd) as stream:
-            for line in stream:
+        print(f"🔧 SSH training command: {ssh_cmd}")
+        
+        # Execute training with proper error handling and real-time output
+        import subprocess
+        try:
+            print("🚀 Starting training execution...")
+            process = subprocess.Popen(
+                ssh_cmd, 
+                shell=True, 
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT,
+                universal_newlines=True,
+                bufsize=1
+            )
+            
+            # Stream output in real-time
+            for line in process.stdout:
                 print(line, end="")
+            
+            # Wait for completion and get return code
+            return_code = process.wait()
+            
+            if return_code != 0:
+                print(f"❌ Training command failed with exit code: {return_code}")
+                return None
+            else:
+                print("✅ Training command completed successfully")
+                
+        except Exception as e:
+            print(f"❌ SSH execution failed: {e}")
+            return None
         
         # Download the trained model
         print("📥 Downloading trained model...")
