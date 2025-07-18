@@ -268,6 +268,11 @@ def main():
             SCRIPT_DIR / "llm-builder"  # BigTune installation
         ]
         
+        # If CONFIG_FILE is absolute, also check relative to config directory
+        if hasattr(config, 'CONFIG_FILE') and Path(config.CONFIG_FILE).is_absolute():
+            config_dir = Path(config.CONFIG_FILE).parent.parent
+            llm_builder_paths.insert(1, config_dir / "llm-builder")
+        
         llm_builder_path = None
         for path in llm_builder_paths:
             if path.exists():
@@ -285,6 +290,24 @@ def main():
         if result != 0:
             print(f"⚠️ Upload failed with exit code: {result}")
             return None
+        
+        # If using external config, also upload datasets directory
+        if hasattr(config, 'CONFIG_FILE') and Path(config.CONFIG_FILE).is_absolute():
+            config_dir = Path(config.CONFIG_FILE).parent.parent
+            datasets_dir = config_dir / "datasets"
+            
+            if datasets_dir.exists():
+                print(f"📂 Found external datasets directory: {datasets_dir}")
+                datasets_upload_cmd = f"scp -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -r -i {ssh_key_path} -P {ssh_port} {datasets_dir}/ {ssh_user}@{pod_ip}:/workspace/datasets/"
+                print(f"🔧 Datasets upload command: {datasets_upload_cmd}")
+                result = os.system(datasets_upload_cmd)
+                if result != 0:
+                    print(f"⚠️ Datasets upload failed with exit code: {result}")
+                    return None
+                else:
+                    print("✅ External datasets uploaded successfully")
+            else:
+                print(f"⚠️ No datasets directory found at {datasets_dir}")
 
         # === STEP 5: Trigger training remotely
         print("🚀 Launching training on pod...")
