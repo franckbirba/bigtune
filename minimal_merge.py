@@ -31,16 +31,25 @@ except ImportError:
 
 def load_training_config():
     """Load the training configuration YAML file"""
-    # Look for config file in llm-builder directory first, then current directory
+    # Look for config file in current directory first, then bigtune directory
     config_paths = [
-        Path("llm-builder") / config.CONFIG_FILE,
-        Path(config.CONFIG_FILE),
-        Path("llm-builder/config/positivity-lora.yaml")  # fallback
+        Path(config.CONFIG_FILE),  # Current working directory
+        Path("llm-builder") / config.CONFIG_FILE,  # BigTune structure
+        Path("config") / config.CONFIG_FILE.split('/')[-1] if '/' in config.CONFIG_FILE else Path("config") / config.CONFIG_FILE  # Just config/ dir
     ]
     
     for config_path in config_paths:
         if config_path.exists():
             with open(config_path, 'r') as f:
+                return yaml.safe_load(f)
+    
+    # Try to find any YAML config file as a last resort
+    config_dir = Path("llm-builder/config")
+    if config_dir.exists():
+        yaml_files = list(config_dir.glob("*.yaml"))
+        if yaml_files:
+            print(f"⚠️  Using fallback config file: {yaml_files[0]}")
+            with open(yaml_files[0], 'r') as f:
                 return yaml.safe_load(f)
     
     raise FileNotFoundError(f"Could not find config file. Tried: {[str(p) for p in config_paths]}")

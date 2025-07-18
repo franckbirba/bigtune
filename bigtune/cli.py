@@ -30,9 +30,10 @@ class BigTune:
     def load_training_config(self):
         """Load the training configuration YAML file"""
         config_paths = [
-            self.base_dir / "llm-builder" / config.CONFIG_FILE,
-            self.base_dir / config.CONFIG_FILE,
-            self.base_dir / "llm-builder/config/positivity-lora.yaml"  # fallback
+            Path(config.CONFIG_FILE),  # Current working directory
+            self.base_dir / "llm-builder" / config.CONFIG_FILE,  # BigTune structure
+            self.base_dir / config.CONFIG_FILE,  # BigTune root
+            Path("config") / config.CONFIG_FILE.split('/')[-1] if '/' in config.CONFIG_FILE else Path("config") / config.CONFIG_FILE  # Just config/ dir
         ]
         
         for config_path in config_paths:
@@ -103,8 +104,9 @@ class BigTune:
         
         # Check config file
         config_paths = [
-            self.base_dir / "llm-builder" / config.CONFIG_FILE,
-            self.base_dir / config.CONFIG_FILE
+            Path(config.CONFIG_FILE),  # Current working directory
+            self.base_dir / "llm-builder" / config.CONFIG_FILE,  # BigTune structure
+            self.base_dir / config.CONFIG_FILE  # BigTune root
         ]
         config_found = any(p.exists() for p in config_paths)
         if not config_found:
@@ -112,18 +114,18 @@ class BigTune:
         
         # Check dataset file if specified
         if dataset_path:
-            dataset_full_path = self.base_dir / "llm-builder" / dataset_path
-            if not dataset_full_path.exists():
-                checks.append((dataset_full_path, "Training dataset"))
+            dataset_paths = [
+                Path(dataset_path),  # Current working directory
+                self.base_dir / "llm-builder" / dataset_path  # BigTune structure
+            ]
+            dataset_found = any(p.exists() for p in dataset_paths)
+            if not dataset_found:
+                checks.append((dataset_paths[0], "Training dataset"))
         
-        missing = []
-        for path, name in checks:
-            missing.append(f"{name}: {path}")
-        
-        if missing:
+        if checks:
             self.log("Missing prerequisites:", "ERROR")
-            for item in missing:
-                self.log(f"  - {item}", "ERROR")
+            for path, name in checks:
+                self.log(f"  - {name}: {path}", "ERROR")
             return False
             
         return True
