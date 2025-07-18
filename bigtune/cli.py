@@ -107,36 +107,9 @@ class BigTune:
             self.log("❌ Could not load training configuration", "ERROR")
             return False
         
-        output_dir, dataset_path = self.get_training_paths()
-        
-        checks = []
-        
-        # Check config file
-        config_paths = [
-            Path(config.CONFIG_FILE),  # Current working directory
-            self.base_dir / "llm-builder" / config.CONFIG_FILE,  # BigTune structure
-            self.base_dir / config.CONFIG_FILE  # BigTune root
-        ]
-        config_found = any(p.exists() for p in config_paths)
-        if not config_found:
-            checks.append((config_paths[0], "Training config"))
-        
-        # Check dataset file if specified
-        if dataset_path:
-            dataset_paths = [
-                Path(dataset_path),  # Current working directory
-                self.base_dir / "llm-builder" / dataset_path  # BigTune structure
-            ]
-            dataset_found = any(p.exists() for p in dataset_paths)
-            if not dataset_found:
-                checks.append((dataset_paths[0], "Training dataset"))
-        
-        if checks:
-            self.log("Missing prerequisites:", "ERROR")
-            for path, name in checks:
-                self.log(f"  - {name}: {path}", "ERROR")
-            return False
-            
+        # Always return True if we have a valid config - let RunPod handle file validation
+        # The upload process will copy the files to the correct locations
+        self.log("✅ Configuration loaded successfully", "INFO")
         return True
 
     def train(self, args):

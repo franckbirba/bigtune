@@ -262,62 +262,85 @@ def main():
         # === STEP 4: Upload your project to pod
         print("📤 Uploading local folder to pod...")
         
-        # Look for llm-builder in current directory first, then BigTune directory
-        llm_builder_paths = [
-            Path("./llm-builder"),  # Current working directory  
-            SCRIPT_DIR / "llm-builder"  # BigTune installation
-        ]
+        # Determine upload strategy based on config file location
+        using_external_config = hasattr(config, 'CONFIG_FILE') and Path(config.CONFIG_FILE).is_absolute()
         
-        # If CONFIG_FILE is absolute, also check relative to config directory
-        if hasattr(config, 'CONFIG_FILE') and Path(config.CONFIG_FILE).is_absolute():
+        if using_external_config:
+            # When using external config, upload from external project
             config_dir = Path(config.CONFIG_FILE).parent.parent
-            llm_builder_paths.insert(1, config_dir / "llm-builder")
-        
-        llm_builder_path = None
-        for path in llm_builder_paths:
-            if path.exists():
-                llm_builder_path = path
-                break
-        
-        if not llm_builder_path:
-            print("❌ Error: Could not find llm-builder directory")
-            return None
+            external_llm_builder = config_dir / "llm-builder"
             
-        print(f"📂 Using llm-builder from: {llm_builder_path}")
-        upload_cmd = f"scp -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -r -i {ssh_key_path} -P {ssh_port} {llm_builder_path}/ {ssh_user}@{pod_ip}:/workspace/"
-        print(f"🔧 Upload command: {upload_cmd}")
-        result = os.system(upload_cmd)
-        if result != 0:
-            print(f"⚠️ Upload failed with exit code: {result}")
-            return None
-        
-        # If using external config, also upload datasets directory
-        if hasattr(config, 'CONFIG_FILE') and Path(config.CONFIG_FILE).is_absolute():
-            config_dir = Path(config.CONFIG_FILE).parent.parent
-            datasets_dir = config_dir / "datasets"
-            
-            if datasets_dir.exists():
-                print(f"📂 Found external datasets directory: {datasets_dir}")
-                
-                # First create the datasets directory on the pod
-                mkdir_cmd = f'ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -i {ssh_key_path} -p {ssh_port} {ssh_user}@{pod_ip} "mkdir -p /workspace/datasets"'
-                print(f"🔧 Creating datasets directory: {mkdir_cmd}")
-                result = os.system(mkdir_cmd)
+            if external_llm_builder.exists():
+                print(f"📂 Using external llm-builder from: {external_llm_builder}")
+                upload_cmd = f"scp -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -r -i {ssh_key_path} -P {ssh_port} {external_llm_builder}/ {ssh_user}@{pod_ip}:/workspace/"
+                print(f"🔧 Upload command: {upload_cmd}")
+                result = os.system(upload_cmd)
                 if result != 0:
-                    print(f"⚠️ Failed to create datasets directory with exit code: {result}")
+                    print(f"⚠️ Upload failed with exit code: {result}")
                     return None
-                
-                # Then upload the datasets
-                datasets_upload_cmd = f"scp -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -r -i {ssh_key_path} -P {ssh_port} {datasets_dir}/* {ssh_user}@{pod_ip}:/workspace/datasets/"
-                print(f"🔧 Datasets upload command: {datasets_upload_cmd}")
-                result = os.system(datasets_upload_cmd)
-                if result != 0:
-                    print(f"⚠️ Datasets upload failed with exit code: {result}")
-                    return None
-                else:
-                    print("✅ External datasets uploaded successfully")
             else:
-                print(f"⚠️ No datasets directory found at {datasets_dir}")
+                # Fallback: upload BigTune's config but external datasets
+                print(f"📂 Using BigTune's llm-builder with external datasets")
+                llm_builder_path = SCRIPT_DIR / "llm-builder"
+                if llm_builder_path.exists():
+                    upload_cmd = f"scp -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -r -i {ssh_key_path} -P {ssh_port} {llm_builder_path}/ {ssh_user}@{pod_ip}:/workspace/"
+                    print(f"🔧 Upload command: {upload_cmd}")
+                    result = os.system(upload_cmd)
+                    if result != 0:
+                        print(f"⚠️ Upload failed with exit code: {result}")
+                        return None
+                else:
+                    print("❌ Error: Could not find llm-builder directory")
+                    return None
+                
+                # Upload external datasets separately
+                datasets_dir = config_dir / "datasets"
+                if datasets_dir.exists():
+                    print(f"📂 Found external datasets directory: {datasets_dir}")
+                    
+                    # First create the datasets directory on the pod (clear existing)
+                    mkdir_cmd = f'ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -i {ssh_key_path} -p {ssh_port} {ssh_user}@{pod_ip} "rm -rf /workspace/datasets && mkdir -p /workspace/datasets"'
+                    print(f"🔧 Creating clean datasets directory: {mkdir_cmd}")
+                    result = os.system(mkdir_cmd)
+                    if result != 0:
+                        print(f"⚠️ Failed to create datasets directory with exit code: {result}")
+                        return None
+                    
+                    # Then upload the external datasets
+                    datasets_upload_cmd = f"scp -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -r -i {ssh_key_path} -P {ssh_port} {datasets_dir}/* {ssh_user}@{pod_ip}:/workspace/datasets/"
+                    print(f"🔧 Datasets upload command: {datasets_upload_cmd}")
+                    result = os.system(datasets_upload_cmd)
+                    if result != 0:
+                        print(f"⚠️ Datasets upload failed with exit code: {result}")
+                        return None
+                    else:
+                        print("✅ External datasets uploaded successfully")
+                else:
+                    print(f"⚠️ No datasets directory found at {datasets_dir}")
+        else:
+            # When using BigTune's internal config, use BigTune's llm-builder
+            llm_builder_paths = [
+                Path("./llm-builder"),  # Current working directory  
+                SCRIPT_DIR / "llm-builder"  # BigTune installation
+            ]
+            
+            llm_builder_path = None
+            for path in llm_builder_paths:
+                if path.exists():
+                    llm_builder_path = path
+                    break
+            
+            if not llm_builder_path:
+                print("❌ Error: Could not find llm-builder directory")
+                return None
+                
+            print(f"📂 Using BigTune's llm-builder from: {llm_builder_path}")
+            upload_cmd = f"scp -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -r -i {ssh_key_path} -P {ssh_port} {llm_builder_path}/ {ssh_user}@{pod_ip}:/workspace/"
+            print(f"🔧 Upload command: {upload_cmd}")
+            result = os.system(upload_cmd)
+            if result != 0:
+                print(f"⚠️ Upload failed with exit code: {result}")
+                return None
 
         # === STEP 5: Trigger training remotely
         print("🚀 Launching training on pod...")
