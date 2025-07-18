@@ -279,7 +279,7 @@ def main():
             return None
             
         print(f"📂 Using llm-builder from: {llm_builder_path}")
-        upload_cmd = f"scp -r -i {ssh_key_path} -P {ssh_port} {llm_builder_path}/ {ssh_user}@{pod_ip}:/workspace/"
+        upload_cmd = f"scp -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -r -i {ssh_key_path} -P {ssh_port} {llm_builder_path}/ {ssh_user}@{pod_ip}:/workspace/"
         print(f"🔧 Upload command: {upload_cmd}")
         result = os.system(upload_cmd)
         if result != 0:
@@ -292,7 +292,7 @@ def main():
         # Upload the unified training script
         print("📤 Uploading training script...")
         runpod_script_path = SCRIPT_DIR / "runpod_train.sh"
-        script_upload_cmd = f"scp -i {ssh_key_path} -P {ssh_port} {runpod_script_path} {ssh_user}@{pod_ip}:/workspace/runpod_train.sh"
+        script_upload_cmd = f"scp -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -i {ssh_key_path} -P {ssh_port} {runpod_script_path} {ssh_user}@{pod_ip}:/workspace/runpod_train.sh"
         print(f"🔧 Script upload command: {script_upload_cmd}")
         result = os.system(script_upload_cmd)
         if result != 0:
@@ -307,7 +307,7 @@ def main():
             env_vars.append(f"CONFIG_FILE={config.CONFIG_FILE}")
         
         env_str = " ".join(env_vars) + " " if env_vars else ""
-        ssh_cmd = f'ssh -i {ssh_key_path} -p {ssh_port} {ssh_user}@{pod_ip} "{env_str}chmod +x /workspace/runpod_train.sh && {env_str}/workspace/runpod_train.sh"'
+        ssh_cmd = f'ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -i {ssh_key_path} -p {ssh_port} {ssh_user}@{pod_ip} "{env_str}chmod +x /workspace/runpod_train.sh && {env_str}/workspace/runpod_train.sh"'
         print(f"🔧 SSH training command: {ssh_cmd}")
         
         # Execute training with proper error handling and real-time output
@@ -342,7 +342,7 @@ def main():
         
         # Download the trained model
         print("📥 Downloading trained model...")
-        download_cmd = f"scp -r -i {ssh_key_path} -P {ssh_port} {ssh_user}@{pod_ip}:/workspace/output ./"
+        download_cmd = f"scp -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -r -i {ssh_key_path} -P {ssh_port} {ssh_user}@{pod_ip}:/workspace/output ./"
         print(f"🔧 Download command: {download_cmd}")
         result = os.system(download_cmd)
         if result != 0:
