@@ -306,8 +306,8 @@ def main():
                 if datasets_dir.exists():
                     print(f"📂 Found external datasets directory: {datasets_dir}")
                     
-                    # Upload the external datasets
-                    datasets_upload_cmd = f"scp -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -r -i {ssh_key_path} -P {ssh_port} {datasets_dir}/* {ssh_user}@{pod_ip}:/workspace/datasets/"
+                    # Upload the external datasets (preserve directory structure)
+                    datasets_upload_cmd = f"scp -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -r -i {ssh_key_path} -P {ssh_port} {datasets_dir}/ {ssh_user}@{pod_ip}:/workspace/"
                     print(f"🔧 Datasets upload command: {datasets_upload_cmd}")
                     result = os.system(datasets_upload_cmd)
                     if result != 0:
