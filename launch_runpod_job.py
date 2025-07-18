@@ -5,6 +5,9 @@ import requests
 from pathlib import Path
 from socket import create_connection
 
+# Get the directory where this script is located (BigTune installation)
+SCRIPT_DIR = Path(__file__).parent
+
 # Import configuration
 try:
     from bigtune.config import config
@@ -251,18 +254,43 @@ def main():
 
         # === STEP 4: Upload your project to pod
         print("📤 Uploading local folder to pod...")
-        os.system(f"scp -r -i {ssh_key_path} -P {ssh_port} ./llm-builder/ {ssh_user}@{pod_ip}:/workspace/")
+        
+        # Look for llm-builder in current directory first, then BigTune directory
+        llm_builder_paths = [
+            Path("./llm-builder"),  # Current working directory  
+            SCRIPT_DIR / "llm-builder"  # BigTune installation
+        ]
+        
+        llm_builder_path = None
+        for path in llm_builder_paths:
+            if path.exists():
+                llm_builder_path = path
+                break
+        
+        if not llm_builder_path:
+            print("❌ Error: Could not find llm-builder directory")
+            return None
+            
+        print(f"📂 Using llm-builder from: {llm_builder_path}")
+        os.system(f"scp -r -i {ssh_key_path} -P {ssh_port} {llm_builder_path}/ {ssh_user}@{pod_ip}:/workspace/")
 
         # === STEP 5: Trigger training remotely
         print("🚀 Launching training on pod...")
         print("🪵 Live training logs:")
         # Upload the unified training script
         print("📤 Uploading training script...")
-        os.system(f"scp -i {ssh_key_path} -P {ssh_port} ./runpod_train.sh {ssh_user}@{pod_ip}:/workspace/runpod_train.sh")
+        runpod_script_path = SCRIPT_DIR / "runpod_train.sh"
+        os.system(f"scp -i {ssh_key_path} -P {ssh_port} {runpod_script_path} {ssh_user}@{pod_ip}:/workspace/runpod_train.sh")
         
         # Set environment variables and execute the script
-        env_vars = f"HF_TOKEN={config.HF_TOKEN}" if hasattr(config, 'HF_TOKEN') and config.HF_TOKEN else ""
-        ssh_cmd = f'ssh -i {ssh_key_path} -p {ssh_port} {ssh_user}@{pod_ip} "{env_vars} chmod +x /workspace/runpod_train.sh && {env_vars} /workspace/runpod_train.sh"'
+        env_vars = []
+        if hasattr(config, 'HF_TOKEN') and config.HF_TOKEN:
+            env_vars.append(f"HF_TOKEN={config.HF_TOKEN}")
+        if hasattr(config, 'CONFIG_FILE') and config.CONFIG_FILE:
+            env_vars.append(f"CONFIG_FILE={config.CONFIG_FILE}")
+        
+        env_str = " ".join(env_vars) + " " if env_vars else ""
+        ssh_cmd = f'ssh -i {ssh_key_path} -p {ssh_port} {ssh_user}@{pod_ip} "{env_str}chmod +x /workspace/runpod_train.sh && {env_str}/workspace/runpod_train.sh"'
         with os.popen(ssh_cmd) as stream:
             for line in stream:
                 print(line, end="")
