@@ -340,15 +340,51 @@ def main():
             print(f"❌ SSH execution failed: {e}")
             return None
         
+        # Test SSH connection before download
+        print("🔗 Testing SSH connection...")
+        test_ssh_cmd = f'ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=10 -i {ssh_key_path} -p {ssh_port} {ssh_user}@{pod_ip} "echo SSH connection test successful"'
+        print(f"🔧 SSH test command: {test_ssh_cmd}")
+        ssh_test_result = os.system(test_ssh_cmd)
+        
+        if ssh_test_result != 0:
+            print("❌ SSH connection test failed - pod may be unreachable")
+            return None
+        else:
+            print("✅ SSH connection test successful")
+        
+        # Check if output directory exists on pod before downloading
+        print("🔍 Checking for training output on pod...")
+        check_cmd = f'ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -i {ssh_key_path} -p {ssh_port} {ssh_user}@{pod_ip} "ls -la /workspace/output"'
+        print(f"🔧 Check command: {check_cmd}")
+        check_result = os.system(check_cmd)
+        
+        if check_result != 0:
+            print("⚠️ No output directory found on pod - training may have failed")
+        else:
+            print("✅ Output directory found on pod")
+        
         # Download the trained model
         print("📥 Downloading trained model...")
         download_cmd = f"scp -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -r -i {ssh_key_path} -P {ssh_port} {ssh_user}@{pod_ip}:/workspace/output ./"
         print(f"🔧 Download command: {download_cmd}")
-        result = os.system(download_cmd)
-        if result != 0:
-            print(f"⚠️ Download failed with exit code: {result}")
-        else:
-            print("✅ Model downloaded to ./output/")
+        
+        # Add retry logic for download
+        max_retries = 3
+        for attempt in range(max_retries):
+            print(f"📥 Download attempt {attempt + 1}/{max_retries}...")
+            result = os.system(download_cmd)
+            if result == 0:
+                print("✅ Model downloaded to ./output/")
+                break
+            else:
+                print(f"⚠️ Download attempt {attempt + 1} failed with exit code: {result}")
+                if attempt < max_retries - 1:
+                    print("⏳ Waiting 5 seconds before retry...")
+                    import time
+                    time.sleep(5)
+                else:
+                    print("❌ All download attempts failed")
+                    return None
     except Exception as e:
         print("❌ Une erreur est survenue :", str(e))
     finally:
