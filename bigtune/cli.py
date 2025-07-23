@@ -14,9 +14,13 @@ from pathlib import Path
 from datetime import datetime
 try:
     from .config import config
+    from .ollama_integration import deploy_to_ollama
+    from .dataset_generator import DatasetGenerator
 except ImportError:
     # For direct script execution
     from config import config
+    from ollama_integration import deploy_to_ollama
+    from dataset_generator import DatasetGenerator
 
 class BigTune:
     def __init__(self):
@@ -245,6 +249,78 @@ class BigTune:
                     self.log(f"Removed: {dir_path}")
             else:
                 self.log(f"Not found: {dir_path}")
+    
+    def deploy(self, args):
+        """Deploy merged model to Ollama"""
+        self.log("🚀 Deploying model to Ollama")
+        
+        # Check if merged model exists
+        merged_model = self.base_dir / "merged_model"
+        if not merged_model.exists():
+            self.log("❌ Merged model not found. Run 'bigtune merge' first.")
+            return False
+        
+        # Load config for model name and settings
+        try:
+            training_config = self.load_training_config()
+            model_name = args.name or training_config.get('model_name', 'bigtune-model')
+        except Exception:
+            model_name = args.name or 'bigtune-model'
+        
+        # Deploy to Ollama
+        success = deploy_to_ollama(
+            model_name=model_name,
+            config_file=config.CONFIG_FILE if hasattr(config, 'CONFIG_FILE') else None,
+            rag_mode=args.rag,
+            test_prompt=args.test
+        )
+        
+        if success:
+            self.log(f"✅ Model deployed successfully: {model_name}")
+            self.log(f"🎯 Test with: ollama run {model_name}")
+            return True
+        else:
+            self.log("❌ Deployment failed")
+            return False
+    
+    def generate(self, args):
+        """Generate training dataset using BigAcademy"""
+        self.log("📊 Generating training dataset")
+        
+        try:
+            generator = DatasetGenerator()
+            
+            if args.list_agents:
+                agents = generator.list_available_agents()
+                self.log("Available agent profiles:")
+                for agent in sorted(agents):
+                    self.log(f"  📋 {agent}")
+                return True
+            
+            if not args.agent:
+                self.log("❌ Agent name required. Use --list-agents to see available agents.")
+                return False
+            
+            # Generate dataset
+            if args.quick:
+                files = generator.quick_generate(args.agent, args.quick)
+            elif args.target:
+                files = generator.generate_large_dataset(args.agent, args.target)
+            else:
+                files = generator.generate_dataset(args.agent, args.samples or 100)
+            
+            if files:
+                self.log(f"✅ Successfully generated {len(files)} dataset files")
+                for file_path in files:
+                    self.log(f"   📄 {file_path}")
+                return True
+            else:
+                self.log("❌ Dataset generation failed")
+                return False
+                
+        except Exception as e:
+            self.log(f"❌ Error: {e}")
+            return False
 
     def config_cmd(self, args):
         """Show and validate configuration"""
@@ -265,9 +341,11 @@ def main():
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
+  bigtune generate --agent my_agent --samples 200  # Generate training dataset
   bigtune train              # Train LoRA on RunPod
   bigtune merge              # Merge LoRA with base model
   bigtune convert            # Convert to GGUF for LM Studio
+  bigtune deploy             # Deploy merged model to Ollama
   bigtune full               # Run complete pipeline
   bigtune status             # Check pipeline status
   bigtune clean              # Clean intermediate files
@@ -277,6 +355,16 @@ Examples:
     
     subparsers = parser.add_subparsers(dest='command', help='Available commands')
     
+    # Generate command
+    generate_parser = subparsers.add_parser('generate', help='Generate training dataset')
+    generate_parser.add_argument('--agent', help='Agent profile name')
+    generate_parser.add_argument('--samples', type=int, help='Samples per template')
+    generate_parser.add_argument('--quick', choices=['small', 'medium', 'large', 'xl'], 
+                                help='Quick generation with predefined sizes')
+    generate_parser.add_argument('--target', type=int, help='Target total samples')
+    generate_parser.add_argument('--list-agents', action='store_true', 
+                                help='List available agent profiles')
+    
     # Train command
     train_parser = subparsers.add_parser('train', help='Train LoRA model on RunPod')
     
@@ -285,6 +373,12 @@ Examples:
     
     # Convert command
     convert_parser = subparsers.add_parser('convert', help='Convert merged model to GGUF')
+    
+    # Deploy command
+    deploy_parser = subparsers.add_parser('deploy', help='Deploy merged model to Ollama')
+    deploy_parser.add_argument('--name', help='Name for the Ollama model')
+    deploy_parser.add_argument('--rag', action='store_true', help='Deploy as RAG model')
+    deploy_parser.add_argument('--test', help='Test prompt for the deployed model')
     
     # Full pipeline command
     full_parser = subparsers.add_parser('full', help='Run complete pipeline')
@@ -311,9 +405,11 @@ Examples:
     
     # Map commands to methods
     commands = {
+        'generate': bigtune.generate,
         'train': bigtune.train,
         'merge': bigtune.merge, 
         'convert': bigtune.convert,
+        'deploy': bigtune.deploy,
         'full': bigtune.full_pipeline,
         'status': bigtune.status,
         'clean': bigtune.clean,
