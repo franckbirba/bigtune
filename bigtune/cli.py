@@ -134,8 +134,13 @@ class BigTune:
         if not output_dir:
             self.log("❌ Could not determine output directory from config", "ERROR")
             return False
+        
+        # Handle both absolute (external) and relative (internal) paths
+        if Path(output_dir).is_absolute():
+            output_path = Path(output_dir)
+        else:
+            output_path = self.base_dir / output_dir
             
-        output_path = self.base_dir / output_dir
         if not output_path.exists():
             self.log(f"❌ No LoRA training output found at {output_path}. Run 'bigtune train' first.", "ERROR")
             return False
@@ -185,7 +190,10 @@ class BigTune:
         
         # Check training output
         if output_dir:
-            training_output = self.base_dir / output_dir
+            if Path(output_dir).is_absolute():
+                training_output = Path(output_dir)
+            else:
+                training_output = self.base_dir / output_dir
             training_status = "✅ Complete" if training_output.exists() else "❌ Not found"
             self.log(f"Training:     {training_status} ({output_dir})")
         else:

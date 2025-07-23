@@ -76,10 +76,16 @@ fi
 # Copy training files
 echo "📋 Setting up training configuration..."
 if [ -d "/workspace/llm-builder" ]; then
+    echo "📂 Using BigTune's internal llm-builder structure"
     cp -r /workspace/llm-builder/config /workspace/
     cp -r /workspace/llm-builder/datasets /workspace/
+elif [ -d "/workspace/config" ] && [ -d "/workspace/datasets" ]; then
+    echo "📂 Using external config and datasets (already in place)"
+    # External configs are already uploaded to the right locations
 else
-    echo "❌ llm-builder directory not found!"
+    echo "❌ Neither llm-builder directory nor external config/datasets found!"
+    echo "Available directories in /workspace:"
+    ls -la /workspace/ || true
     exit 1
 fi
 

@@ -42,11 +42,12 @@ def convert_to_gguf():
     output_dir.mkdir(exist_ok=True)
     
     # Different quantization levels for different memory requirements
+    # Updated for current llama.cpp supported formats
     quantizations = [
-        ("q4_0", "4-bit (smallest, ~3.5GB)"),
-        ("q5_0", "5-bit (small, ~4.3GB)"),
         ("q8_0", "8-bit (medium, ~7GB)"),
-        ("f16", "16-bit (large, ~14GB)")
+        ("f16", "16-bit (large, ~14GB)"),
+        ("bf16", "BF16 (full precision, ~14GB)"),
+        ("f32", "32-bit (highest quality, ~28GB)")
     ]
     
     print("🔄 Converting to GGUF formats...")
@@ -111,12 +112,12 @@ def main():
         install_in_lmstudio()
         
         print("\n🎉 Done! Your models are now available in LM Studio:")
-        print("   - mistral-7b-positivity-q4_0 (recommended for most systems)")
-        print("   - mistral-7b-positivity-q5_0 (better quality)")
-        print("   - mistral-7b-positivity-q8_0 (high quality, needs more RAM)")
-        print("   - mistral-7b-positivity-f16 (full quality, needs lots of RAM)")
+        print("   - helpdesk-support-agent-4b-q8_0 (recommended for most systems)")
+        print("   - helpdesk-support-agent-4b-f16 (better quality)")
+        print("   - helpdesk-support-agent-4b-bf16 (high quality)")
+        print("   - helpdesk-support-agent-4b-f32 (highest quality, needs lots of RAM)")
         
-        print("\n💡 Try loading the q4_0 version first - it should work on most systems!")
+        print("\n💡 Try loading the q8_0 version first - it should work on most systems!")
         print("   Restart LM Studio to see the new models.")
     
 if __name__ == "__main__":

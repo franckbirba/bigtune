@@ -2,6 +2,8 @@ import os
 import time
 import json
 import requests
+import yaml
+import shutil
 from pathlib import Path
 from socket import create_connection
 
@@ -40,6 +42,112 @@ except ImportError:
     CONTAINER_DISK_SIZE_GB = 50
     MIN_VCPU_COUNT = 2
     MIN_MEMORY_GB = 15
+
+def parse_and_upload_external_datasets(config_file_path, ssh_key_path, ssh_port, ssh_user, pod_ip):
+    """Parse dataset paths from external config and upload them to RunPod"""
+    try:
+        # Parse the config file to extract dataset paths
+        with open(config_file_path, 'r') as f:
+            config_data = yaml.safe_load(f)
+        
+        datasets = config_data.get('datasets', [])
+        if not datasets:
+            print("⚠️ No datasets found in config file")
+            return True
+        
+        print(f"📂 Found {len(datasets)} datasets to upload")
+        
+        # Create datasets directory on RunPod
+        mkdir_cmd = f'ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -i {ssh_key_path} -p {ssh_port} {ssh_user}@{pod_ip} "mkdir -p /workspace/datasets"'
+        result = os.system(mkdir_cmd)
+        if result != 0:
+            print(f"⚠️ Failed to create datasets directory")
+            return False
+        
+        # Upload each dataset file
+        uploaded_files = []
+        for dataset in datasets:
+            dataset_path = Path(dataset.get('path', ''))
+            if dataset_path.exists():
+                filename = dataset_path.name
+                upload_cmd = f"scp -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -i {ssh_key_path} -P {ssh_port} {dataset_path} {ssh_user}@{pod_ip}:/workspace/datasets/"
+                print(f"📤 Uploading dataset: {filename}")
+                result = os.system(upload_cmd)
+                if result == 0:
+                    uploaded_files.append(filename)
+                    print(f"✅ Uploaded: {filename}")
+                else:
+                    print(f"❌ Failed to upload: {filename}")
+                    return False
+            else:
+                print(f"❌ Dataset file not found: {dataset_path}")
+                return False
+        
+        print(f"✅ Successfully uploaded {len(uploaded_files)} dataset files")
+        return True
+        
+    except Exception as e:
+        print(f"❌ Error parsing/uploading datasets: {e}")
+        return False
+
+def create_runpod_compatible_config(config_file_path, output_path):
+    """Create a RunPod-compatible version of the config with relative paths"""
+    try:
+        with open(config_file_path, 'r') as f:
+            config_data = yaml.safe_load(f)
+        
+        # Update dataset paths to use RunPod workspace structure
+        if 'datasets' in config_data:
+            for dataset in config_data['datasets']:
+                if 'path' in dataset:
+                    original_path = Path(dataset['path'])
+                    dataset['path'] = f"datasets/{original_path.name}"
+        
+        # Update other paths to use workspace structure
+        if 'dataset_prepared_path' in config_data:
+            config_data['dataset_prepared_path'] = "output/prepared"
+        
+        if 'output_dir' in config_data:
+            # Extract just the final directory name for output
+            original_output = Path(config_data['output_dir'])
+            config_data['output_dir'] = f"output/{original_output.name}"
+        
+        # Write the modified config
+        with open(output_path, 'w') as f:
+            yaml.dump(config_data, f, default_flow_style=False)
+        
+        print(f"✅ Created RunPod-compatible config: {output_path}")
+        return True
+        
+    except Exception as e:
+        print(f"❌ Error creating RunPod config: {e}")
+        return False
+
+def get_download_destination(config_file_path):
+    """Determine the correct download destination based on config type"""
+    try:
+        # If using external config, parse the original output_dir
+        if Path(config_file_path).is_absolute():
+            with open(config_file_path, 'r') as f:
+                config_data = yaml.safe_load(f)
+            
+            external_output_dir = config_data.get('output_dir', '')
+            if external_output_dir and Path(external_output_dir).is_absolute():
+                # Get the parent directory of the external output (where we want to download)
+                # This will be: /Users/franckbirba/DEV/TEST-CREWAI/bigacademy/ 
+                # So when scp adds /output, it becomes: /Users/franckbirba/DEV/TEST-CREWAI/bigacademy/output/
+                external_parent = Path(external_output_dir).parent.parent
+                print(f"📂 Using external output destination: {external_parent}/")
+                return str(external_parent) + "/"
+        
+        # Default to BigTune's local directory
+        print(f"📂 Using BigTune's local output destination: ./")
+        return "./"
+        
+    except Exception as e:
+        print(f"⚠️ Error determining download destination: {e}")
+        print(f"📂 Falling back to BigTune's local output destination: ./")
+        return "./"
 
 def list_available_gpus():
     url = "https://api.runpod.io/graphql"
@@ -263,7 +371,7 @@ def main():
         print("📤 Uploading local folder to pod...")
         
         # Determine upload strategy based on config file location
-        using_external_config = hasattr(config, 'CONFIG_FILE') and Path(config.CONFIG_FILE).is_absolute()
+        using_external_config = Path(config.CONFIG_FILE).is_absolute()
         
         if using_external_config:
             # When using external config, upload from external project
@@ -279,44 +387,40 @@ def main():
                     print(f"⚠️ Upload failed with exit code: {result}")
                     return None
             else:
-                # Upload external config and datasets separately
-                print(f"📂 Using external config and datasets")
+                # Smart external config and dataset upload
+                print(f"📂 Using smart external config and dataset upload")
                 
                 # First create necessary directories
-                mkdir_cmd = f'ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -i {ssh_key_path} -p {ssh_port} {ssh_user}@{pod_ip} "rm -rf /workspace/config /workspace/datasets && mkdir -p /workspace/config /workspace/datasets"'
-                print(f"🔧 Creating clean directories: {mkdir_cmd}")
+                mkdir_cmd = f'ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -i {ssh_key_path} -p {ssh_port} {ssh_user}@{pod_ip} "rm -rf /workspace/config /workspace/datasets /workspace/output && mkdir -p /workspace/config /workspace/datasets /workspace/output"'
+                print(f"🔧 Creating clean directories")
                 result = os.system(mkdir_cmd)
                 if result != 0:
                     print(f"⚠️ Failed to create directories with exit code: {result}")
                     return None
                 
-                # Upload the specific config file
+                # Create RunPod-compatible config
                 config_file_path = Path(config.CONFIG_FILE)
-                config_upload_cmd = f"scp -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -i {ssh_key_path} -P {ssh_port} {config_file_path} {ssh_user}@{pod_ip}:/workspace/config/"
-                print(f"🔧 Config upload command: {config_upload_cmd}")
+                temp_config_path = "/tmp/runpod_config.yaml"
+                if not create_runpod_compatible_config(config_file_path, temp_config_path):
+                    return None
+                
+                # Upload the RunPod-compatible config
+                config_upload_cmd = f"scp -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -i {ssh_key_path} -P {ssh_port} {temp_config_path} {ssh_user}@{pod_ip}:/workspace/config/{config_file_path.name}"
+                print(f"🔧 Uploading RunPod-compatible config")
                 result = os.system(config_upload_cmd)
                 if result != 0:
                     print(f"⚠️ Config upload failed with exit code: {result}")
                     return None
                 else:
-                    print("✅ External config uploaded successfully")
+                    print("✅ RunPod-compatible config uploaded successfully")
                 
-                # Upload external datasets
-                datasets_dir = config_dir / "datasets"
-                if datasets_dir.exists():
-                    print(f"📂 Found external datasets directory: {datasets_dir}")
-                    
-                    # Upload the external datasets (preserve directory structure)
-                    datasets_upload_cmd = f"scp -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -r -i {ssh_key_path} -P {ssh_port} {datasets_dir}/ {ssh_user}@{pod_ip}:/workspace/"
-                    print(f"🔧 Datasets upload command: {datasets_upload_cmd}")
-                    result = os.system(datasets_upload_cmd)
-                    if result != 0:
-                        print(f"⚠️ Datasets upload failed with exit code: {result}")
-                        return None
-                    else:
-                        print("✅ External datasets uploaded successfully")
-                else:
-                    print(f"⚠️ No datasets directory found at {datasets_dir}")
+                # Upload datasets by parsing config
+                if not parse_and_upload_external_datasets(config_file_path, ssh_key_path, ssh_port, ssh_user, pod_ip):
+                    return None
+                
+                # Clean up temp config
+                if os.path.exists(temp_config_path):
+                    os.remove(temp_config_path)
         else:
             # When using BigTune's internal config, use BigTune's llm-builder
             llm_builder_paths = [
@@ -421,7 +525,14 @@ def main():
         
         # Download the trained model
         print("📥 Downloading trained model...")
-        download_cmd = f"scp -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -r -i {ssh_key_path} -P {ssh_port} {ssh_user}@{pod_ip}:/workspace/output ./"
+        
+        # Determine correct download destination
+        download_dest = get_download_destination(config.CONFIG_FILE)
+        
+        # Ensure download destination exists
+        Path(download_dest).mkdir(parents=True, exist_ok=True)
+        
+        download_cmd = f"scp -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -r -i {ssh_key_path} -P {ssh_port} {ssh_user}@{pod_ip}:/workspace/output {download_dest}"
         print(f"🔧 Download command: {download_cmd}")
         
         # Add retry logic for download
@@ -430,7 +541,7 @@ def main():
             print(f"📥 Download attempt {attempt + 1}/{max_retries}...")
             result = os.system(download_cmd)
             if result == 0:
-                print("✅ Model downloaded to ./output/")
+                print(f"✅ Model downloaded to {download_dest}output/")
                 break
             else:
                 print(f"⚠️ Download attempt {attempt + 1} failed with exit code: {result}")
