@@ -16,11 +16,15 @@ try:
     from .config import config
     from .ollama_integration import deploy_to_ollama
     from .dataset_generator import DatasetGenerator
+    from .rag_commands import RAGCommands, add_rag_commands
+    from .unified_server import serve_unified
 except ImportError:
     # For direct script execution
     from config import config
     from ollama_integration import deploy_to_ollama
     from dataset_generator import DatasetGenerator
+    from rag_commands import RAGCommands, add_rag_commands
+    from unified_server import serve_unified
 
 class BigTune:
     def __init__(self):
@@ -321,6 +325,31 @@ class BigTune:
         except Exception as e:
             self.log(f"❌ Error: {e}")
             return False
+    
+    def serve(self, args):
+        """Run unified server with model + RAG"""
+        self.log("🚀 Starting BigTune unified server")
+        
+        # Auto-detect model if not specified
+        model = args.model
+        if not model and hasattr(config, 'MODEL_NAME'):
+            model = config.MODEL_NAME
+        
+        try:
+            serve_unified(
+                model=model,
+                rag_index=args.rag,
+                host=args.host,
+                port=args.port,
+                no_cors=args.no_cors
+            )
+            return True
+        except KeyboardInterrupt:
+            self.log("\n⏹️ Server stopped")
+            return True
+        except Exception as e:
+            self.log(f"❌ Server error: {e}")
+            return False
 
     def config_cmd(self, args):
         """Show and validate configuration"""
@@ -341,11 +370,13 @@ def main():
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
+  bigtune rag init --source swagger --url http://api.example.com/swagger.json
   bigtune generate --agent my_agent --samples 200  # Generate training dataset
   bigtune train              # Train LoRA on RunPod
   bigtune merge              # Merge LoRA with base model
   bigtune convert            # Convert to GGUF for LM Studio
   bigtune deploy             # Deploy merged model to Ollama
+  bigtune serve              # Serve model with RAG
   bigtune full               # Run complete pipeline
   bigtune status             # Check pipeline status
   bigtune clean              # Clean intermediate files
@@ -395,6 +426,17 @@ Examples:
     config_parser = subparsers.add_parser('config', help='Show configuration')
     config_parser.add_argument('--validate', action='store_true', help='Validate configuration')
     
+    # Add RAG commands
+    rag_parser = add_rag_commands(subparsers)
+    
+    # Serve command
+    serve_parser = subparsers.add_parser('serve', help='Run unified server (model + RAG)')
+    serve_parser.add_argument('--model', help='Model name to serve')
+    serve_parser.add_argument('--rag', default='default', help='RAG index to use')
+    serve_parser.add_argument('--host', default='0.0.0.0', help='Host to bind to')
+    serve_parser.add_argument('--port', type=int, default=8000, help='Port to bind to')
+    serve_parser.add_argument('--no-cors', action='store_true', help='Disable CORS')
+    
     if len(sys.argv) == 1:
         parser.print_help()
         return
@@ -410,11 +452,32 @@ Examples:
         'merge': bigtune.merge, 
         'convert': bigtune.convert,
         'deploy': bigtune.deploy,
+        'serve': bigtune.serve,
         'full': bigtune.full_pipeline,
         'status': bigtune.status,
         'clean': bigtune.clean,
         'config': bigtune.config_cmd
     }
+    
+    # Handle RAG commands separately
+    if args.command == 'rag':
+        rag_commands = RAGCommands()
+        rag_methods = {
+            'init': rag_commands.init,
+            'list': rag_commands.list,
+            'info': rag_commands.info,
+            'search': rag_commands.search,
+            'rebuild': rag_commands.rebuild,
+            'delete': rag_commands.delete,
+            'add': rag_commands.add
+        }
+        
+        if hasattr(args, 'rag_command') and args.rag_command in rag_methods:
+            success = rag_methods[args.rag_command](args)
+            sys.exit(0 if success else 1)
+        else:
+            rag_parser.print_help()
+            sys.exit(1)
     
     if args.command in commands:
         success = commands[args.command](args)
