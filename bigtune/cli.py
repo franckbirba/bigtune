@@ -18,6 +18,7 @@ try:
     from .dataset_generator import DatasetGenerator
     from .rag_commands import RAGCommands, add_rag_commands
     from .unified_server import serve_unified
+    from .docker_packaging import package_model
 except ImportError:
     # For direct script execution
     from config import config
@@ -25,6 +26,7 @@ except ImportError:
     from dataset_generator import DatasetGenerator
     from rag_commands import RAGCommands, add_rag_commands
     from unified_server import serve_unified
+    from docker_packaging import package_model
 
 class BigTune:
     def __init__(self):
@@ -350,6 +352,60 @@ class BigTune:
         except Exception as e:
             self.log(f"❌ Server error: {e}")
             return False
+    
+    def package(self, args):
+        """Package model and RAG into Docker container"""
+        self.log("📦 Packaging model for Docker deployment")
+        
+        # Validate model exists
+        model_name = args.model
+        if not model_name:
+            self.log("❌ Model name required")
+            return False
+        
+        # Determine image name
+        image_name = args.image
+        if not image_name:
+            image_name = f"bigtune-{model_name.replace(':', '-').lower()}"
+        
+        # Get RAG indexes
+        rag_indexes = args.rag or []
+        if args.auto_rag:
+            # Auto-detect available RAG indexes
+            try:
+                from .rag.generic_rag import GenericRAG
+                available_indexes = GenericRAG.list_indexes()
+                rag_indexes = [idx['name'] for idx in available_indexes]
+                self.log(f"🔍 Auto-detected RAG indexes: {', '.join(rag_indexes)}")
+            except Exception:
+                pass
+        
+        # Package the model
+        try:
+            success = package_model(
+                model_name=model_name,
+                image_name=image_name,
+                rag_indexes=rag_indexes if rag_indexes else None,
+                output_dir=args.output,
+                port=args.port,
+                no_build=args.no_build,
+                registry=args.registry,
+                push=args.push
+            )
+            
+            if success:
+                self.log(f"✅ Docker package created successfully")
+                self.log(f"🐳 Image: {image_name}")
+                if args.output:
+                    self.log(f"📁 Package: {args.output}")
+                return True
+            else:
+                self.log("❌ Packaging failed")
+                return False
+                
+        except Exception as e:
+            self.log(f"❌ Packaging error: {e}")
+            return False
 
     def config_cmd(self, args):
         """Show and validate configuration"""
@@ -377,6 +433,7 @@ Examples:
   bigtune convert            # Convert to GGUF for LM Studio
   bigtune deploy             # Deploy merged model to Ollama
   bigtune serve              # Serve model with RAG
+  bigtune package my-model --rag my-index          # Package for Docker
   bigtune full               # Run complete pipeline
   bigtune status             # Check pipeline status
   bigtune clean              # Clean intermediate files
@@ -437,6 +494,19 @@ Examples:
     serve_parser.add_argument('--port', type=int, default=8000, help='Port to bind to')
     serve_parser.add_argument('--no-cors', action='store_true', help='Disable CORS')
     
+    # Package command
+    package_parser = subparsers.add_parser('package', help='Package model and RAG for Docker deployment')
+    package_parser.add_argument('model', help='Model name to package')
+    package_parser.add_argument('--image', help='Docker image name (auto-generated if not provided)')
+    package_parser.add_argument('--rag', nargs='+', help='RAG indexes to include')
+    package_parser.add_argument('--auto-rag', action='store_true', 
+                               help='Auto-detect and include all available RAG indexes')
+    package_parser.add_argument('--output', help='Output directory for Docker package')
+    package_parser.add_argument('--port', type=int, default=8000, help='Service port in container')
+    package_parser.add_argument('--no-build', action='store_true', help='Skip Docker image build')
+    package_parser.add_argument('--registry', help='Docker registry URL (e.g., registry.gitlab.com/user/project)')
+    package_parser.add_argument('--push', action='store_true', help='Push image to registry after build')
+    
     if len(sys.argv) == 1:
         parser.print_help()
         return
@@ -453,6 +523,7 @@ Examples:
         'convert': bigtune.convert,
         'deploy': bigtune.deploy,
         'serve': bigtune.serve,
+        'package': bigtune.package,
         'full': bigtune.full_pipeline,
         'status': bigtune.status,
         'clean': bigtune.clean,
